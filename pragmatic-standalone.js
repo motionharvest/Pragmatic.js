@@ -25,7 +25,7 @@
   }
 
   // Forward declarations (filled in after State exists)
-  let updateVisibility, updateClasses, updateDOM, bindInputs, trackOnShowElements, evaluateCondition;
+  let updateVisibility, updateClasses, trackOnShowElements, evaluateCondition;
 
   // =========================
   // State Singleton
@@ -177,7 +177,8 @@
     }
   }
 
-  
+  const State = new StateSingleton();
+  global.State = State; // optional global for quick debugging
 
   // =========================
   // DOM helpers now that State exists
@@ -259,7 +260,7 @@
     });
   }
 
-  updateDOM = function(key, value) {
+  function updateDOM(key, value) {
     const elements = document.querySelectorAll(`[data-bind="${key}"]`);
     elements.forEach(element => {
       const tag = element.tagName;
@@ -279,7 +280,7 @@
     requestAnimationFrame(updateClasses);
   }
 
-  bindInputs = function(data) {
+  function bindInputs(data) {
     document.addEventListener("change", (event) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -329,8 +330,7 @@
     });
     requestAnimationFrame(trackOnShowElements);
   };
-  const State = new StateSingleton();
-  global.State = State; // optional global for quick debugging
+  
   // =========================
   // JSX-like h()
   // =========================
