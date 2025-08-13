@@ -239,7 +239,7 @@
     );
   };
 
-  function updateClasses() {
+  updateClasses = function() {
     document.querySelectorAll("[class-if]").forEach((element) => {
       const classRules = element.getAttribute("class-if").split(";").map(rule => rule.trim()).filter(Boolean);
 
@@ -260,7 +260,7 @@
     });
   }
 
-  function updateDOM(key, value) {
+  updateDOM = function(key, value) {
     const elements = document.querySelectorAll(`[data-bind="${key}"]`);
     elements.forEach(element => {
       const tag = element.tagName;
@@ -280,7 +280,7 @@
     requestAnimationFrame(updateClasses);
   }
 
-  function bindInputs(data) {
+  bindInputs = function(data) {
     document.addEventListener("change", (event) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -299,7 +299,7 @@
     });
   }
 
-  function trackOnShowElements() {
+  trackOnShowElements = function() {
     const elements = document.querySelectorAll("[onShow]");
     elements.forEach((element) => {
       if (!element.__onShowObserver) {
