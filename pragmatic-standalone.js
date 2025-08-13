@@ -27,7 +27,211 @@
   // Create global namespace
   window.Pragmatic = {};
 
-  // Copy the source code here, but remove export statements
+  // Helper functions that need to be defined first
+  function reactive(obj, callback) {
+    return new Proxy(obj, {
+      set(target, key, value) {
+        if (target[key] === value) return true;
+        target[key] = value;
+        callback(key, value);
+        return true;
+      }
+    });
+  }
+
+  function updateDOM(key, value) {
+    const elements = document.querySelectorAll(`[data-bind="${key}"]`);
+    elements.forEach(element => {
+      if (
+        element.tagName === 'INPUT' ||
+        element.tagName === 'TEXTAREA' ||
+        element.tagName === 'SELECT'
+      ) {
+        if (element.type === 'checkbox') {
+          element.checked = Boolean(value);
+        } else if (element.type === 'radio') {
+          element.checked = (element.value === value);
+        } else {
+          element.value = value || '';
+        }
+      } else {
+        element.textContent = value;
+      }
+    });
+
+    requestAnimationFrame(updateVisibility);
+    requestAnimationFrame(updateClasses);
+  }
+
+  function updateVisibility() {
+    document.querySelectorAll("[show-if]").forEach((element) => {
+      const condition = element.getAttribute("show-if");
+
+      let shouldShow = false;
+
+      if (typeof element.showIf === "function") {
+        shouldShow = element.showIf();
+      } else if (condition) {
+        shouldShow = evaluateCondition(condition.trim());
+      }
+      element.style.display = shouldShow ? "" : "none";
+    });
+
+    requestAnimationFrame(trackOnShowElements);
+  }
+
+  function updateClasses() {
+    document.querySelectorAll("[class-if]").forEach((element) => {
+      const classRules = element.getAttribute("class-if").split(";").map(rule => rule.trim());
+
+      classRules.forEach(rule => {
+        let match;
+        if (rule.includes("?")) {
+          const [condition, classes] = rule.split("?").map(s => s.trim());
+          const [trueClass, falseClass] = classes.split(":").map(s => s.trim());
+          match = evaluateCondition(condition);
+          element.classList.toggle(trueClass, match);
+          if (falseClass) {
+            element.classList.toggle(falseClass, !match);
+          }
+        } else if (rule.includes(":")) {
+          const [stateKey, className] = rule.split(":").map(s => s.trim());
+          match = State.get(stateKey);
+          element.classList.toggle(className, !!match);
+        }
+      });
+    });
+  }
+
+  function bindInputs(data) {
+    document.addEventListener("change", (event) => {
+      const target = event.target;
+      const key = target.getAttribute("data-bind");
+
+      if (key) {
+        if (target.type === "checkbox") {
+          data[key] = target.checked;
+          updateDOM(key, target.checked);
+        } else {
+          data[key] = target.value;
+          updateDOM(key, target.value);
+        }
+        updateVisibility();
+        updateClasses();
+      }
+    });
+  }
+
+  function trackOnShowElements() {
+    const elements = document.querySelectorAll("[onShow]");
+
+    elements.forEach((element) => {
+      if (!element.__onShowObserver) {
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              const onShowFn = element.getAttribute("onShow");
+              if (onShowFn) {
+                try {
+                  element.onShow();
+                } catch (e) {
+                  console.error("Error executing onShow function:", e);
+                }
+              }
+            }
+          });
+        });
+
+        observer.observe(element);
+        element.__onShowObserver = observer;
+      }
+    });
+  }
+
+  function evaluateCondition(condition) {
+    return condition.split(/\s*\|\|\s*/).some(orPart =>
+      orPart.split(/\s*&&\s*/).every(andPart =>
+        evaluateSingleCondition(andPart.trim())
+      )
+    );
+  }
+
+  function evaluateSingleCondition(condition) {
+    let match = false;
+    let stateKey, operator, expectedValue;
+
+    if (condition.startsWith("!")) {
+      return !State.get(condition.substring(1).trim());
+    }
+
+    if (condition.startsWith("route~=")) {
+      return State.get("route").startsWith(condition.replace("route~=", "").trim());
+    }
+    if (condition.startsWith("route==")) {
+      const expectedRoute = condition.replace("route==", "").trim();
+      const currentRoute = State.get("route");
+      return currentRoute === expectedRoute || currentRoute.startsWith(expectedRoute + "#");
+    }
+    if (condition.startsWith("route!=")) {
+      const expectedRoute = condition.replace("route!=", "").trim();
+      const currentRoute = State.get("route");
+      return currentRoute !== expectedRoute && !currentRoute.startsWith(expectedRoute + "#");
+    }
+    if (condition.startsWith("route#=")) {
+      const expectedRoute = condition.replace("route#=", "").trim();
+      const currentRoute = State.get("route");
+      return currentRoute.includes("#") && currentRoute.startsWith(expectedRoute + "#");
+    }
+
+    if (!/[=<>!~]|matches/.test(condition)) {
+      return !!State.get(condition);
+    }
+
+    [stateKey, operator, expectedValue] = parseCondition(condition);
+    const stateValue = State.get(stateKey.trim());
+
+    if (operator === "matches") {
+      try {
+        const regexPattern = expectedValue.trim().replace(/^\/|\/$/g, "");
+        const regex = new RegExp(regexPattern);
+        match = regex.test(stateValue);
+      } catch (e) {
+        console.error("Invalid regex in class-if condition:", expectedValue, e);
+      }
+    } else {
+      switch (operator) {
+        case "==":
+          match = stateValue == expectedValue.trim();
+          break;
+        case "!=":
+          match = stateValue != expectedValue.trim();
+          break;
+        case "~=":
+          match = typeof stateValue === "string" && stateValue.includes(expectedValue.trim());
+          break;
+        case ">":
+          match = parseFloat(stateValue) > parseFloat(expectedValue);
+          break;
+        case "<":
+          match = parseFloat(stateValue) < parseFloat(expectedValue);
+          break;
+        case ">=":
+          match = parseFloat(stateValue) >= parseFloat(expectedValue);
+          break;
+        case "<=":
+          match = parseFloat(stateValue) <= parseFloat(expectedValue);
+          break;
+      }
+    }
+    return match;
+  }
+
+  function parseCondition(condition) {
+    const match = condition.match(/([a-zA-Z0-9_]+)\s*(==|!=|~=|>=|<=|>|<|matches)\s*(\/.*\/|.+)/);
+    return match ? [match[1], match[2], match[3]] : [condition, '', ''];
+  }
+
+  // Copy the source code here, but remove export statements and fix function references
   /**
  * Pragmatic.js - A lightweight state management and UI rendering library.
  *
@@ -1130,6 +1334,8 @@ function trackOnShowElements() {
   window.Pragmatic.routes = window.routes;
   window.Pragmatic.validate = window.validate;
   window.Pragmatic.resetValidation = window.resetValidation;
+  window.Pragmatic.reactive = window.reactive;
+  window.Pragmatic.updateDOM = window.updateDOM;
   
   // Initialize when DOM is ready
   if (document.readyState === 'loading') {
