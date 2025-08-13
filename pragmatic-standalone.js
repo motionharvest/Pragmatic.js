@@ -177,8 +177,7 @@
     }
   }
 
-  const State = new StateSingleton();
-  global.State = State; // optional global for quick debugging
+  
 
   // =========================
   // DOM helpers now that State exists
@@ -330,7 +329,8 @@
     });
     requestAnimationFrame(trackOnShowElements);
   };
-
+  const State = new StateSingleton();
+  global.State = State; // optional global for quick debugging
   // =========================
   // JSX-like h()
   // =========================
